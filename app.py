@@ -62,16 +62,81 @@ rf_model_crop.fit(X_crop, y_crop)
 
 # Prediction functions remain unchanged
 def predict_rainfall(year, state):
-    # Logic for rainfall prediction
-    pass
+    crop_encoded = X_rainfall['Crop'].mode()[0]
+    season_encoded = X_rainfall['Season'].mode()[0]
+    area_mean = X_rainfall['Area'].mean()
+    production_mean = X_rainfall['Production'].mean()
+    fertilizer_mean = X_rainfall['Fertilizer'].mean()
+    pesticide_mean = X_rainfall['Pesticide'].mean()
+    yield_mean = X_rainfall['Yield'].mean()
+
+    state_encoded = label_encoders['State'].transform([state])[0]
+
+    input_data = pd.DataFrame({
+        'Crop': [crop_encoded],
+        'Crop_Year': [year],
+        'Season': [season_encoded],
+        'State': [state_encoded],
+        'Area': [area_mean],
+        'Production': [production_mean],
+        'Fertilizer': [fertilizer_mean],
+        'Pesticide': [pesticide_mean],
+        'Yield': [yield_mean]
+    })
+
+    predicted_rainfall = rf_model_rainfall.predict(input_data)[0]
+    return round(predicted_rainfall, 2)
+
+
 
 def predict_yield(year, state, crop, rainfall, fertilizer, pesticide):
-    # Logic for yield prediction
-    pass
+    state_encoded = label_encoders['State'].transform([state])[0]
+    crop_encoded = label_encoders['Crop'].transform([crop])[0]
+
+    input_data = pd.DataFrame({
+        'Crop_Year': [year],
+        'State': [state_encoded],
+        'Annual_Rainfall': [rainfall],
+        'Crop': [crop_encoded],
+        'Fertilizer': [fertilizer],
+        'Pesticide': [pesticide]
+    })
+
+    predicted_yield = rf_model_yield.predict(input_data)[0]
+    return round(predicted_yield, 2)
 
 def predict_crop(area, rainfall, fertilizer, pesticide, season, state):
-    # Logic for crop prediction
-    pass
+    input_data = pd.DataFrame({
+        'Area': [area],
+        'Annual_Rainfall': [rainfall],
+        'Fertilizer': [fertilizer],
+        'Pesticide': [pesticide]
+    })
+
+    # Add one-hot encoded columns for 'Season' and 'State'
+    for col in X_crop.columns:
+        if col.startswith('Season_') or col.startswith('State_'):
+            input_data[col] = 0
+
+    # Set the appropriate season and state column to 1
+    if 'Season_' + season in input_data.columns:
+        input_data['Season_' + season] = 1
+    if 'State_' + state in input_data.columns:
+        input_data['State_' + state] = 1
+
+    # Reorder columns to match training data
+    input_data = input_data.reindex(columns=X_crop.columns, fill_value=0)
+
+    # Scale the numerical columns
+    input_data[['Area', 'Annual_Rainfall', 'Fertilizer', 'Pesticide']] = scaler.transform(
+        input_data[['Area', 'Annual_Rainfall', 'Fertilizer', 'Pesticide']]
+    )
+
+    # Make prediction
+    prediction = rf_model_crop.predict(input_data)
+    predicted_crop = crop_le.inverse_transform(prediction)
+    return predicted_crop[0]
+
 
 # API routes
 @app.route('/')
