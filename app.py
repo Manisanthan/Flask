@@ -7,16 +7,12 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 import traceback
 
-# Initialize Flask app and enable CORS
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # Enable CORS for all routes
 
-# Load the datasets
-try:
-    data = pd.read_csv('crop.csv')  # For rainfall and yield (adjust path)
-    crop_data = pd.read_csv('limited_top_ten_crops.csv')  # For crop prediction (adjust path)
-except FileNotFoundError:
-    raise Exception("Dataset files not found. Ensure 'crop.csv' and 'limited_top_ten_crops.csv' are in the project directory.")
+# Load the datasets for rainfall, yield, and crop predictions
+data = pd.read_csv('crop.csv')  # For rainfall and yield (adjust path)
+crop_data = pd.read_csv('limited_top_ten_crops.csv')  # For crop prediction (adjust path)
 
 # Preprocessing for Rainfall and Yield Prediction
 label_encoders = {}
@@ -60,7 +56,8 @@ y_crop = crop_data['Crop']
 rf_model_crop = RandomForestClassifier(random_state=42)
 rf_model_crop.fit(X_crop, y_crop)
 
-# Prediction functions remain unchanged
+
+# Function to predict rainfall
 def predict_rainfall(year, state):
     crop_encoded = X_rainfall['Crop'].mode()[0]
     season_encoded = X_rainfall['Season'].mode()[0]
@@ -88,7 +85,7 @@ def predict_rainfall(year, state):
     return round(predicted_rainfall, 2)
 
 
-
+# Function to predict yield
 def predict_yield(year, state, crop, rainfall, fertilizer, pesticide):
     state_encoded = label_encoders['State'].transform([state])[0]
     crop_encoded = label_encoders['Crop'].transform([crop])[0]
@@ -105,6 +102,8 @@ def predict_yield(year, state, crop, rainfall, fertilizer, pesticide):
     predicted_yield = rf_model_yield.predict(input_data)[0]
     return round(predicted_yield, 2)
 
+
+# Function to predict crop
 def predict_crop(area, rainfall, fertilizer, pesticide, season, state):
     input_data = pd.DataFrame({
         'Area': [area],
@@ -141,50 +140,54 @@ def predict_crop(area, rainfall, fertilizer, pesticide, season, state):
 # API routes
 @app.route('/')
 def home():
-    return "Flask API for Crop Prediction is running!"
+    return "Flask API is running!"
+
 
 @app.route('/api/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
 
-        # Ensure data is provided
-        if not data:
+        # Debugging log: check if we received data
+        if data is None:
             return jsonify({'error': 'No JSON data received'}), 400
 
-        year = data.get('year')
-        state = data.get('place')
+        print(f"Received data: {data}")
 
-        if not year or not state:
-            return jsonify({'error': 'Missing "year" or "place" in input data'}), 400
+        year = int(data.get('year'))
+        state = str(data.get('place'))
 
         # Predict Rainfall
         rainfall = predict_rainfall(year, state)
 
-        # Handle yield or crop prediction based on additional inputs
-        if all(key in data for key in ['crop', 'fertilizer', 'pesticide']):
-            crop = data['crop']
-            fertilizer = float(data['fertilizer'])
-            pesticide = float(data['pesticide'])
-            predicted_yield = predict_yield(year, state, crop, rainfall, fertilizer, pesticide)
-            return jsonify({'prediction': predicted_yield, 'type': 'yield'}), 200
+        # Check if request is for yield prediction
+        if 'crop' in data and 'fertilizer' in data and 'pesticide' in data:
+          
+            crop = str(data.get('crop'))
+            fertilizer = float(data.get('fertilizer'))
+            pesticide = float(data.get('pesticide'))
 
-        elif all(key in data for key in ['area', 'fertilizer', 'pesticide', 'season']):
-            area = float(data['area'])
-            fertilizer = float(data['fertilizer'])
-            pesticide = float(data['pesticide'])
-            season = data['season']
-            predicted_crop = predict_crop(area, rainfall, fertilizer, pesticide, season, state)
-            return jsonify({'prediction': predicted_crop, 'type': 'crop'}), 200
+            prediction = predict_yield(year, state, crop, rainfall, fertilizer, pesticide)
+            return jsonify({'prediction': prediction, 'type': 'yield'}), 200
 
-        # Default to rainfall prediction
-        return jsonify({'prediction': rainfall, 'type': 'rainfall'}), 200
+        # Check if request is for crop prediction
+        elif 'area' in data and 'fertilizer' in data and 'pesticide' in data and 'season' in data:
+            area = float(data.get('area'))
+            fertilizer = float(data.get('fertilizer'))
+            pesticide = float(data.get('pesticide'))
+            season = str(data.get('season'))
+
+            prediction = predict_crop(area, rainfall, fertilizer, pesticide, season, state)
+            return jsonify({'prediction': prediction, 'type': 'crop'}), 200
+
+        else:
+            # Only rainfall prediction
+            return jsonify({'prediction': rainfall, 'type': 'rainfall'}), 200
 
     except Exception as e:
-        traceback.print_exc()
+        traceback.print_exc()  # Print error to server log for debugging
         return jsonify({'error': str(e)}), 400
 
 # Dynamic port for deployment platforms
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000)
